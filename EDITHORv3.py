@@ -171,74 +171,68 @@ if st.button("📂 Générer Excel(s)"):
     else:
         st.warning("Veuillez sélectionner au moins un PDF.")
 
-# --- LISTE DES FICHIERS ET TELECHARGEMENT ---
+# --- TABLEAU DES FICHIERS GENERES ---
 if generated_files:
-    st.subheader("2️⃣ Options de téléchargement")
-    download_option = st.radio("Choisissez le mode de téléchargement :", 
-                               ["Télécharger chaque fichier individuellement", 
-                                "Télécharger tout en ZIP", 
-                                "Téléchargement automatique Excel par Excel"])
+    st.subheader("2️⃣ Fichiers Excel générés")
+    df_files = pd.DataFrame({
+        "Nom du fichier": [os.path.basename(f) for f in generated_files]
+    })
 
-    if download_option == "Télécharger chaque fichier individuellement":
-        for file_path in generated_files:
-            file_name = os.path.basename(file_path)
-            st.download_button(label=f"⬇️ {file_name}", 
-                               data=open(file_path, "rb").read(), 
-                               file_name=file_name)
-
-    elif download_option == "Télécharger tout en ZIP":
+    # Boutons globaux
+    col1, col2, col3 = st.columns(3)
+    with col1:
         zip_path = os.path.join(output_folder, "EDITHOR_All.zip")
         with zipfile.ZipFile(zip_path, "w") as zipf:
             for file_path in generated_files:
                 zipf.write(file_path, os.path.basename(file_path))
         st.download_button("⬇️ Tout télécharger (ZIP)", data=open(zip_path, "rb").read(), file_name="EDITHOR_All.zip")
-
-    elif download_option == "Téléchargement automatique Excel par Excel":
+    with col2:
         for file_path in generated_files:
-            file_name = os.path.basename(file_path)
-            st.download_button(label=f"⬇️ {file_name}", 
-                               data=open(file_path, "rb").read(), 
-                               file_name=file_name)
+            st.download_button(label=f"⬇️ {os.path.basename(file_path)}", data=open(file_path, "rb").read(), file_name=os.path.basename(file_path))
+    with col3:
+        if st.button("🗑️ Tout supprimer / Recommencer"):
+            for file_path in generated_files:
+                os.remove(file_path)
+            generated_files.clear()
+            st.experimental_rerun()
 
-    # Bouton tout supprimer/recommencer
-    if st.button("🗑️ Tout supprimer / Recommencer"):
-        for file_path in generated_files:
-            os.remove(file_path)
-        generated_files.clear()
-        st.experimental_rerun()
+    # Tableau visuel
+    st.dataframe(df_files.style.set_properties(**{'background-color': '#f0f8ff', 'color': 'black'}), height=200)
 
-# --- GESTION EAN DANS UN EXPANDER ---
-with st.expander("✍ Gestion des Corrections EAN"):
-    st.write("Liste des corrections EAN actuelles :")
-    if ean_corrections:
-        df_ean = pd.DataFrame(list(ean_corrections.items()), columns=["Ancien EAN", "Nouveau EAN"])
-        st.dataframe(df_ean, height=200)
-    else:
-        st.info("Aucune correction EAN pour le moment.")
-    
-    old_ean = st.text_input("Ancien EAN", key="old_ean")
-    new_ean = st.text_input("Nouveau EAN", key="new_ean")
-    action = st.selectbox("Action", ["Ajouter", "Modifier", "Supprimer"], key="action_ean")
-    if st.button("Valider EAN", key="valider_ean"):
-        if action == "Ajouter":
-            if old_ean and new_ean:
-                ean_corrections[old_ean] = new_ean
-                st.success("EAN ajouté avec succès.")
-        elif action == "Modifier":
-            if old_ean in ean_corrections:
-                ean_corrections[old_ean] = new_ean
-                st.success("EAN modifié avec succès.")
-            else:
-                st.warning("EAN à modifier introuvable.")
-        elif action == "Supprimer":
-            if old_ean in ean_corrections:
-                del ean_corrections[old_ean]
-                st.success("EAN supprimé avec succès.")
-            else:
-                st.warning("EAN à supprimer introuvable.")
+# --- GESTION EAN INTERACTIVE ---
+st.subheader("✍ Gestion des Corrections EAN")
+with st.expander("Afficher / Modifier les corrections EAN"):
+    # Ajouter EAN
+    if st.button("+ Ajouter une correction"):
+        ean_corrections["Nouvel_EAN"] = "Valeur"
         with open(EAN_CORRECTIONS_FILE, "w") as f:
             json.dump(ean_corrections, f, indent=4)
         st.experimental_rerun()
+
+    # Tableau avec actions
+    if ean_corrections:
+        df_ean = pd.DataFrame(list(ean_corrections.items()), columns=["Ancien EAN", "Nouveau EAN"])
+        for idx, row in df_ean.iterrows():
+            col1, col2, col3 = st.columns([3,3,2])
+            with col1:
+                st.text_input("Ancien EAN", value=row["Ancien EAN"], key=f"old_{idx}")
+            with col2:
+                st.text_input("Nouveau EAN", value=row["Nouveau EAN"], key=f"new_{idx}")
+            with col3:
+                modif = st.button("Modifier", key=f"mod_{idx}")
+                supp = st.button("Supprimer", key=f"supp_{idx}")
+                if modif:
+                    ean_corrections[st.session_state[f"old_{idx}"]] = st.session_state[f"new_{idx}"]
+                    with open(EAN_CORRECTIONS_FILE, "w") as f:
+                        json.dump(ean_corrections, f, indent=4)
+                    st.experimental_rerun()
+                if supp:
+                    ean_corrections.pop(row["Ancien EAN"], None)
+                    with open(EAN_CORRECTIONS_FILE, "w") as f:
+                        json.dump(ean_corrections, f, indent=4)
+                    st.experimental_rerun()
+    else:
+        st.info("Aucune correction EAN pour le moment.")
 
 # --- FOOTER ---
 st.markdown("---")
