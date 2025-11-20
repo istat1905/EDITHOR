@@ -6,9 +6,18 @@ import re
 from datetime import datetime
 from pathlib import Path
 import os
+from PIL import Image
 
 st.set_page_config(page_title="EDITHOR", layout="wide")
 
+# --- LOGO ---
+try:
+    logo = Image.open("EDITHOR2.png")
+    st.image(logo, use_column_width=True)
+except:
+    st.warning("Logo non trouvé : EDITHOR2.png")
+
+# --- TITRE ---
 st.markdown("<h1 style='text-align:center; color:#007aff;'>EDITHOR</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
@@ -25,25 +34,35 @@ def load_config():
 
 def save_config(config):
     with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f)
+        json.dump(config, f, indent=4)
 
 config = load_config()
 
-# --- SIDEBAR pour Excel et dossier de sortie ---
+# --- SIDEBAR ---
 st.sidebar.header("Paramètres")
 uploaded_template = st.sidebar.file_uploader("Modèle Excel", type=["xlsx"], key="excel_template")
-output_folder = st.sidebar.text_input("Dossier de sortie (ex: Downloads/EDITHOR)", value=str(Path.home() / "Downloads/EDITHOR"))
-
+output_folder = st.sidebar.text_input(
+    "Dossier de sortie", 
+    value=str(Path.home() / "Downloads" / "EDITHOR")
+)
 os.makedirs(output_folder, exist_ok=True)
 
 # --- CORRECTIONS EAN ---
-st.sidebar.markdown("### Gestion EAN")
 if os.path.exists(EAN_CORRECTIONS_FILE):
-    with open(EAN_CORRECTIONS_FILE, 'r') as f:
+    with open(EAN_CORRECTIONS_FILE, "r") as f:
         ean_corrections = json.load(f)
 else:
     ean_corrections = {}
 
+st.sidebar.markdown("### Gestion EAN")
+# Liste des EAN
+if ean_corrections:
+    df_ean = pd.DataFrame(list(ean_corrections.items()), columns=["Ancien EAN", "Nouveau EAN"])
+    st.sidebar.dataframe(df_ean, use_container_width=True)
+else:
+    st.sidebar.info("Aucune correction EAN enregistrée.")
+
+# Actions EAN
 ean_action = st.sidebar.selectbox("Action", ["Ajouter", "Modifier", "Supprimer"])
 old_ean = st.sidebar.text_input("Ancien EAN")
 new_ean = st.sidebar.text_input("Nouveau EAN")
@@ -65,13 +84,16 @@ if st.sidebar.button("Valider EAN"):
             st.sidebar.success(f"EAN {old_ean} supprimé")
         else:
             st.sidebar.warning("EAN non trouvé pour supprimer")
-    with open(EAN_CORRECTIONS_FILE, 'w') as f:
+    
+    # Sauvegarde
+    with open(EAN_CORRECTIONS_FILE, "w") as f:
         json.dump(ean_corrections, f, indent=4)
+    st.experimental_rerun()
 
 # --- UPLOAD PDF ---
 uploaded_files = st.file_uploader("Sélectionnez le(s) PDF(s)", type=["pdf"], accept_multiple_files=True)
 
-# --- PROCESSUS DE GÉNÉRATION EXCEL ---
+# --- FONCTIONS ---
 def extract_and_process_pdf(pdf_file, corrections):
     commandes, current_commande, produits, inside_commande = [], None, [], False
     with pdfplumber.open(pdf_file) as pdf:
