@@ -15,16 +15,31 @@ import openpyxl
 # --- CONFIGURATION PAGE ---
 st.set_page_config(page_title="EDITHOR", layout="wide")
 
-# --- LOGO ---
-try:
-    logo = Image.open("EDITHOR2.png")
-    st.image(logo, width=250)
-except:
-    st.warning("Logo non trouvé : EDITHOR2.png")
+# --- LOGO CENTRÉ ---
+logo_col1, logo_col2, logo_col3 = st.columns([1,3,1])
+with logo_col2:
+    try:
+        logo = Image.open("EDITHOR2.png")
+        st.image(logo, width=200)
+    except:
+        st.warning("Logo non trouvé : EDITHOR2.png")
 
-# --- TITRE ---
-st.markdown("<h1 style='text-align:center; color:#007aff;'>EDITHOR</h1>", unsafe_allow_html=True)
-st.markdown("---")
+# --- DESCRIPTION COURTE ---
+st.markdown("<p style='text-align:center; font-size:14px; color:#555;'>Application de traitement PDF → Excel pour vos commandes BAK France</p>", unsafe_allow_html=True)
+
+# --- BOUTON AIDE ---
+with st.expander("❓ Aide"):
+    st.markdown("""
+    **Comment utiliser l'application :**
+    1. Sélectionnez un ou plusieurs fichiers PDF de commandes.
+    2. Cliquez sur **Générer Excel(s)** pour créer les fichiers.
+    3. Téléchargez vos fichiers via :
+       - **Télécharger tout en ZIP** : regroupe tous les fichiers dans un seul ZIP.
+       - **Télécharger tous les Excel** : télécharge tous les fichiers un par un directement.
+       - **Boutons individuels** à côté de chaque fichier pour un téléchargement séparé.
+    4. Gérez les corrections EAN dans la section prévue : ajouter, modifier ou supprimer.
+    5. Vous pouvez tout supprimer et recommencer via le bouton prévu.
+    """)
 
 # --- CONFIG ET CHEMINS ---
 CONFIG_FILE = 'config.json'
@@ -174,21 +189,30 @@ if st.button("📂 Générer Excel(s)"):
 # --- TABLEAU DES FICHIERS GENERES ---
 if generated_files:
     st.subheader("2️⃣ Fichiers Excel générés")
-    df_files = pd.DataFrame({
-        "Nom du fichier": [os.path.basename(f) for f in generated_files]
-    })
 
-    # Boutons globaux
+    # Créer fichiers en mémoire
+    file_bytes_list = []
+    for file_path in generated_files:
+        with open(file_path, "rb") as f:
+            file_bytes_list.append((os.path.basename(file_path), f.read()))
+
     col1, col2, col3 = st.columns(3)
+
+    # 1️⃣ Télécharger tout en ZIP
     with col1:
-        zip_path = os.path.join(output_folder, "EDITHOR_All.zip")
-        with zipfile.ZipFile(zip_path, "w") as zipf:
-            for file_path in generated_files:
-                zipf.write(file_path, os.path.basename(file_path))
-        st.download_button("⬇️ Tout télécharger (ZIP)", data=open(zip_path, "rb").read(), file_name="EDITHOR_All.zip")
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "w") as zipf:
+            for fname, fbytes in file_bytes_list:
+                zipf.writestr(fname, fbytes)
+        zip_buffer.seek(0)
+        st.download_button("⬇️ Tout télécharger (ZIP)", data=zip_buffer, file_name="EDITHOR_All.zip")
+
+    # 2️⃣ Télécharger tous les Excel directement
     with col2:
-        for file_path in generated_files:
-            st.download_button(label=f"⬇️ {os.path.basename(file_path)}", data=open(file_path, "rb").read(), file_name=os.path.basename(file_path))
+        for fname, fbytes in file_bytes_list:
+            st.download_button(label=f"⬇️ {fname}", data=fbytes, file_name=fname, key=f"dl_{fname}")
+
+    # 3️⃣ Tout supprimer
     with col3:
         if st.button("🗑️ Tout supprimer / Recommencer"):
             for file_path in generated_files:
@@ -196,7 +220,8 @@ if generated_files:
             generated_files.clear()
             st.experimental_rerun()
 
-    # Tableau visuel
+    # Affichage tableau
+    df_files = pd.DataFrame({"Nom du fichier": [fname for fname, _ in file_bytes_list]})
     st.dataframe(df_files.style.set_properties(**{'background-color': '#f0f8ff', 'color': 'black'}), height=200)
 
 # --- GESTION EAN INTERACTIVE ---
@@ -231,8 +256,6 @@ with st.expander("Afficher / Modifier les corrections EAN"):
                     with open(EAN_CORRECTIONS_FILE, "w") as f:
                         json.dump(ean_corrections, f, indent=4)
                     st.experimental_rerun()
-    else:
-        st.info("Aucune correction EAN pour le moment.")
 
 # --- FOOTER ---
 st.markdown("---")
