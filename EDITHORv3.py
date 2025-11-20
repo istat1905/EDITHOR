@@ -8,6 +8,9 @@ from pathlib import Path
 from datetime import datetime
 from PIL import Image
 import zipfile
+import io
+import requests
+import openpyxl
 
 # --- CONFIGURATION PAGE ---
 st.set_page_config(page_title="EDITHOR", layout="wide")
@@ -15,7 +18,7 @@ st.set_page_config(page_title="EDITHOR", layout="wide")
 # --- LOGO ---
 try:
     logo = Image.open("EDITHOR2.png")
-    st.image(logo, width=250)  # logo proportionné
+    st.image(logo, width=250)
 except:
     st.warning("Logo non trouvé : EDITHOR2.png")
 
@@ -26,11 +29,26 @@ st.markdown("---")
 # --- CONFIG ET CHEMINS ---
 CONFIG_FILE = 'config.json'
 EAN_CORRECTIONS_FILE = 'corrections_ean.json'
-EXCEL_TEMPLATE_FILE = 'EDI.xlsx'
 
+# Modèle Excel depuis GitHub
+GITHUB_MODEL_URL = "https://raw.githubusercontent.com/<ton_user>/<repo>/main/EDI.xlsx"
+EXCEL_TEMPLATE_FILE = "EDI.xlsx"
+
+# Télécharger le modèle Excel si non présent
+if not os.path.exists(EXCEL_TEMPLATE_FILE):
+    r = requests.get(GITHUB_MODEL_URL)
+    if r.status_code == 200:
+        with open(EXCEL_TEMPLATE_FILE, "wb") as f:
+            f.write(r.content)
+    else:
+        st.error("Impossible de récupérer le modèle Excel depuis GitHub.")
+        st.stop()
+
+# Dossier de sortie temporaire
 output_folder = Path.home() / "Downloads" / f"EDITHOR_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 os.makedirs(output_folder, exist_ok=True)
 
+# Charger corrections EAN
 if os.path.exists(EAN_CORRECTIONS_FILE):
     with open(EAN_CORRECTIONS_FILE, "r") as f:
         ean_corrections = json.load(f)
@@ -42,9 +60,9 @@ st.subheader("1️⃣ Sélectionnez le(s) PDF(s) à traiter")
 uploaded_files = st.file_uploader("Sélectionnez un ou plusieurs PDF", type=["pdf"], accept_multiple_files=True)
 
 # --- FONCTIONS PDF ET EXCEL ---
-def extract_and_process_pdf(pdf_file, corrections):
+def extract_and_process_pdf(pdf_bytes, corrections):
     commandes, current_commande, produits, inside_commande = [], None, [], False
-    with pdfplumber.open(pdf_file) as pdf:
+    with pdfplumber.open(io.BytesIO(pdf_bytes)) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
             if text:
@@ -111,7 +129,6 @@ def analyse_product(line, corrections):
     return {}
 
 def create_excel_from_template(modele_path, output_path, commandes):
-    import openpyxl
     created_files = []
     for commande in commandes:
         if not commande.get('Produits'):
@@ -139,18 +156,16 @@ def create_excel_from_template(modele_path, output_path, commandes):
 
 # --- TRAITEMENT PDF ---
 generated_files = []
+
 if st.button("📂 Générer Excel(s)"):
     if uploaded_files:
         for pdf_file in uploaded_files:
             pdf_bytes = pdf_file.read()
-            temp_pdf_path = "temp.pdf"
-            with open(temp_pdf_path, "wb") as f:
-                f.write(pdf_bytes)
-            commandes = extract_and_process_pdf(temp_pdf_path, ean_corrections)
+            commandes = extract_and_process_pdf(pdf_bytes, ean_corrections)
             files = create_excel_from_template(EXCEL_TEMPLATE_FILE, output_folder, commandes)
             generated_files.extend(files)
         if generated_files:
-            st.success(f"{len(generated_files)} fichiers Excel générés dans : {output_folder}")
+            st.success(f"{len(generated_files)} fichiers Excel générés.")
         else:
             st.warning("Aucun fichier Excel généré.")
     else:
@@ -158,37 +173,72 @@ if st.button("📂 Générer Excel(s)"):
 
 # --- LISTE DES FICHIERS ET TELECHARGEMENT ---
 if generated_files:
-    st.subheader("2️⃣ Téléchargement des fichiers Excel")
-    for file_path in generated_files:
-        file_name = os.path.basename(file_path)
-        st.download_button(label=f"⬇️ {file_name}", data=open(file_path, "rb").read(), file_name=file_name)
-    
-    # Télécharger tout en ZIP
-    zip_path = os.path.join(output_folder, "EDITHOR_All.xlsx.zip")
-    with zipfile.ZipFile(zip_path, "w") as zipf:
-        for file_path in generated_files:
-            zipf.write(file_path, os.path.basename(file_path))
-    st.download_button("⬇️ Tout télécharger (ZIP)", data=open(zip_path, "rb").read(), file_name="EDITHOR_All.zip")
+    st.subheader("2️⃣ Options de téléchargement")
+    download_option = st.radio("Choisissez le mode de téléchargement :", 
+                               ["Télécharger chaque fichier individuellement", 
+                                "Télécharger tout en ZIP", 
+                                "Téléchargement automatique Excel par Excel"])
 
-# --- GESTION EAN EN BAS ---
-st.markdown("---")
-st.subheader("✍ Gestion des Corrections EAN")
-old_ean = st.text_input("Ancien EAN")
-new_ean = st.text_input("Nouveau EAN")
-action = st.selectbox("Action", ["Ajouter", "Modifier", "Supprimer"])
-if st.button("Valider EAN"):
-    if action == "Ajouter":
-        if old_ean and new_ean:
-            ean_corrections[old_ean] = new_ean
-    elif action == "Modifier":
-        if old_ean in ean_corrections:
-            ean_corrections[old_ean] = new_ean
-    elif action == "Supprimer":
-        if old_ean in ean_corrections:
-            del ean_corrections[old_ean]
-    with open(EAN_CORRECTIONS_FILE, "w") as f:
-        json.dump(ean_corrections, f, indent=4)
-    st.experimental_rerun()
+    if download_option == "Télécharger chaque fichier individuellement":
+        for file_path in generated_files:
+            file_name = os.path.basename(file_path)
+            st.download_button(label=f"⬇️ {file_name}", 
+                               data=open(file_path, "rb").read(), 
+                               file_name=file_name)
+
+    elif download_option == "Télécharger tout en ZIP":
+        zip_path = os.path.join(output_folder, "EDITHOR_All.zip")
+        with zipfile.ZipFile(zip_path, "w") as zipf:
+            for file_path in generated_files:
+                zipf.write(file_path, os.path.basename(file_path))
+        st.download_button("⬇️ Tout télécharger (ZIP)", data=open(zip_path, "rb").read(), file_name="EDITHOR_All.zip")
+
+    elif download_option == "Téléchargement automatique Excel par Excel":
+        for file_path in generated_files:
+            file_name = os.path.basename(file_path)
+            st.download_button(label=f"⬇️ {file_name}", 
+                               data=open(file_path, "rb").read(), 
+                               file_name=file_name)
+
+    # Bouton tout supprimer/recommencer
+    if st.button("🗑️ Tout supprimer / Recommencer"):
+        for file_path in generated_files:
+            os.remove(file_path)
+        generated_files.clear()
+        st.experimental_rerun()
+
+# --- GESTION EAN DANS UN EXPANDER ---
+with st.expander("✍ Gestion des Corrections EAN"):
+    st.write("Liste des corrections EAN actuelles :")
+    if ean_corrections:
+        df_ean = pd.DataFrame(list(ean_corrections.items()), columns=["Ancien EAN", "Nouveau EAN"])
+        st.dataframe(df_ean, height=200)
+    else:
+        st.info("Aucune correction EAN pour le moment.")
+    
+    old_ean = st.text_input("Ancien EAN", key="old_ean")
+    new_ean = st.text_input("Nouveau EAN", key="new_ean")
+    action = st.selectbox("Action", ["Ajouter", "Modifier", "Supprimer"], key="action_ean")
+    if st.button("Valider EAN", key="valider_ean"):
+        if action == "Ajouter":
+            if old_ean and new_ean:
+                ean_corrections[old_ean] = new_ean
+                st.success("EAN ajouté avec succès.")
+        elif action == "Modifier":
+            if old_ean in ean_corrections:
+                ean_corrections[old_ean] = new_ean
+                st.success("EAN modifié avec succès.")
+            else:
+                st.warning("EAN à modifier introuvable.")
+        elif action == "Supprimer":
+            if old_ean in ean_corrections:
+                del ean_corrections[old_ean]
+                st.success("EAN supprimé avec succès.")
+            else:
+                st.warning("EAN à supprimer introuvable.")
+        with open(EAN_CORRECTIONS_FILE, "w") as f:
+            json.dump(ean_corrections, f, indent=4)
+        st.experimental_rerun()
 
 # --- FOOTER ---
 st.markdown("---")
