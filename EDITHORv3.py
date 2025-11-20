@@ -5,18 +5,32 @@ import os
 import json
 from openpyxl import load_workbook
 from pathlib import Path
+from PIL import Image
 
-# --- Chemins relatifs ---
+# --- CHEMINS RELATIFS ---
 BASE_DIR = os.path.dirname(__file__)
 CONFIG_FILE = os.path.join(BASE_DIR, 'config.json')
 EAN_CORRECTIONS_FILE = os.path.join(BASE_DIR, 'corrections_ean.json')
+EXCEL_TEMPLATE_FILE = os.path.join(BASE_DIR, 'EDI.xlsx')
+LOGO_FILE = os.path.join(BASE_DIR, 'EDITHOR2.png')
 
-# --- Charger corrections EAN ---
+# --- CONFIG STREAMLIT ---
+st.set_page_config(page_title="EDITHORv3", layout="wide")
+st.title("🧾 EDITHORv3 - PDF → Excel")
+
+# --- AFFICHAGE LOGO ---
+try:
+    logo = Image.open(LOGO_FILE)
+    st.image(logo, width=200)
+except:
+    st.warning("Logo non trouvé")
+
+# --- GESTION CORRECTIONS EAN ---
 def load_ean_corrections():
     try:
         with open(EAN_CORRECTIONS_FILE, 'r') as f:
             return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+    except:
         with open(EAN_CORRECTIONS_FILE, 'w') as f:
             json.dump({}, f)
         return {}
@@ -25,23 +39,9 @@ def save_ean_corrections(corrections):
     with open(EAN_CORRECTIONS_FILE, 'w') as f:
         json.dump(corrections, f, indent=4)
 
-# --- Config Streamlit ---
-st.set_page_config(page_title="EDITHORv3", layout="wide")
-st.title("🧾 EDITHORv3 - PDF → Excel")
-
-# --- Upload PDF(s) ---
-uploaded_files = st.file_uploader("Déposez vos fichiers PDF", type="pdf", accept_multiple_files=True)
-
-# --- Sélection Excel template ---
-excel_template = st.file_uploader("Sélectionnez le modèle Excel", type="xlsx")
-
-# --- Choix dossier sortie (Streamlit Cloud utilise téléchargement direct) ---
-output_folder = st.text_input("Nom du dossier de sortie (local ou Streamlit téléchargement)", "output_edithor")
-
-# --- Gestion corrections EAN ---
-st.subheader("Corrections EAN")
 ean_corrections = load_ean_corrections()
 
+st.subheader("✍ Gestion Corrections EAN")
 col1, col2 = st.columns(2)
 with col1:
     old_ean = st.text_input("Ancien EAN")
@@ -59,7 +59,14 @@ if st.button("Ajouter / Modifier EAN"):
 if st.button("Afficher toutes les corrections EAN"):
     st.json(ean_corrections)
 
-# --- Traitement PDF ---
+# --- UPLOAD PDF(S) ---
+uploaded_files = st.file_uploader("Déposez vos fichiers PDF", type="pdf", accept_multiple_files=True)
+
+# --- NOM DOSSIER DE SORTIE ---
+output_folder = os.path.join(BASE_DIR, st.text_input("Nom du dossier de sortie", "output_edithor"))
+os.makedirs(output_folder, exist_ok=True)
+
+# --- FONCTIONS DE TRAITEMENT PDF ---
 def analyser_produit(line, ean_corrections):
     parts = re.split(r'\s+', line)
     if len(parts) >= 6:
@@ -129,7 +136,7 @@ def extraire_et_structurer_texte_pdf(pdf_file, ean_corrections):
         commandes.append(current_commande)
     return commandes
 
-# --- Génération Excel ---
+# --- GÉNÉRATION EXCEL ---
 def creer_excel_a_partir_du_modele(modele_file, output_folder, commandes):
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
@@ -154,10 +161,10 @@ def creer_excel_a_partir_du_modele(modele_file, output_folder, commandes):
             ws[f'G{i}'] = produit.get('PCB', "")
         wb.save(os.path.join(output_folder, f"{nom_fichier}.xlsx"))
 
-# --- Bouton de traitement ---
+# --- BOUTON DE TRAITEMENT ---
 if uploaded_files and excel_template and output_folder:
     if st.button("🛠️ Traiter PDF(s) et générer Excel"):
         for pdf_file in uploaded_files:
             commandes = extraire_et_structurer_texte_pdf(pdf_file, ean_corrections)
-            creer_excel_a_partir_du_modele(excel_template, output_folder, commandes)
+            creer_excel_a_partir_du_modele(EXCEL_TEMPLATE_FILE, output_folder, commandes)
         st.success(f"✅ Excel généré dans le dossier '{output_folder}' !")
