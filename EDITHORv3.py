@@ -11,11 +11,11 @@ from PIL import Image
 st.set_page_config(page_title="EDITHOR", layout="wide")
 
 # --- LOGO ---
+# NOTE: la largeur du logo est contrôlée depuis la sidebar (slider) définie plus bas.
 try:
     logo = Image.open("EDITHOR2.png")
-    st.image(logo, use_column_width=True)
 except:
-    st.warning("Logo non trouvé : EDITHOR2.png")
+    logo = None
 
 # --- TITRE ---
 st.markdown("<h1 style='text-align:center; color:#007aff;'>EDITHOR</h1>", unsafe_allow_html=True)
@@ -40,12 +40,27 @@ config = load_config()
 
 # --- SIDEBAR ---
 st.sidebar.header("Paramètres")
+
+# Slider pour contrôler la largeur du logo
+logo_width = st.sidebar.slider("Largeur du logo (px)", min_value=100, max_value=800, value=300, step=10)
+
 uploaded_template = st.sidebar.file_uploader("Modèle Excel", type=["xlsx"], key="excel_template")
 output_folder = st.sidebar.text_input(
     "Dossier de sortie", 
     value=str(Path.home() / "Downloads" / "EDITHOR")
 )
 os.makedirs(output_folder, exist_ok=True)
+
+# Affichage du logo (si trouvé) avec la largeur choisie
+if logo:
+    try:
+        # Affiche l'image en respectant la largeur choisie
+        st.image(logo, use_column_width=False, width=logo_width)
+    except Exception:
+        # Fallback : afficher sans resize si un problème survient
+        st.image(logo, use_column_width=True)
+else:
+    st.warning("Logo non trouvé : EDITHOR2.png")
 
 # --- CORRECTIONS EAN ---
 if os.path.exists(EAN_CORRECTIONS_FILE):
@@ -123,19 +138,24 @@ def parse_text(text, commandes, current_commande, produits, inside_commande, cor
             if line.startswith("Commande n°"):
                 current_commande['Commande'] = line.split("Commande n°")[1].strip()
             elif line.startswith("Fournisseur"):
-                current_commande['Fournisseur'] = line.split(":")[1].strip()
+                parts = line.split(":", 1)
+                current_commande['Fournisseur'] = parts[1].strip() if len(parts) > 1 else line.replace("Fournisseur", "").strip()
             elif line.startswith("Document"):
-                current_commande['DateCommande'] = line.split(":")[1].strip()
+                parts = line.split(":", 1)
+                current_commande['DateCommande'] = parts[1].strip() if len(parts) > 1 else ""
             elif line.startswith("Livraison le"):
-                current_commande['DateLivraison'] = line.split(":")[1].strip()
+                parts = line.split(":", 1)
+                current_commande['DateLivraison'] = parts[1].strip() if len(parts) > 1 else line.replace("Livraison le", "").strip()
             elif "BAK FRANCE" in line:
                 current_commande['NomClient'] = line.split("BAK FRANCE")[1].strip()
             elif line.startswith("Lieu dit"):
                 current_commande['Adresse'] = line
             elif line.startswith("Poids total brut produits"):
-                current_commande['PoidsTotal'] = line.split(":")[1].strip()
+                parts = line.split(":", 1)
+                current_commande['PoidsTotal'] = parts[1].strip() if len(parts) > 1 else ""
             elif line.startswith("Montant total ht commande"):
-                current_commande['MontantTotal'] = line.split(":")[1].strip()
+                parts = line.split(":", 1)
+                current_commande['MontantTotal'] = parts[1].strip() if len(parts) > 1 else ""
             elif re.match(r"^\d+ \d+", line):
                 produit = analyse_product(line, corrections)
                 if produit:
