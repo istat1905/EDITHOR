@@ -6,6 +6,9 @@ import json
 from openpyxl import load_workbook
 from pathlib import Path
 from PIL import Image
+import zipfile
+import io
+from datetime import datetime
 
 # --- CHEMINS RELATIFS ---
 BASE_DIR = os.path.dirname(__file__)
@@ -62,8 +65,9 @@ if st.button("Afficher toutes les corrections EAN"):
 # --- UPLOAD PDF(S) ---
 uploaded_files = st.file_uploader("Déposez vos fichiers PDF", type="pdf", accept_multiple_files=True)
 
-# --- NOM DOSSIER DE SORTIE ---
-output_folder = os.path.join(BASE_DIR, st.text_input("Nom du dossier de sortie", "output_edithor"))
+# --- NOM DOSSIER DE SORTIE INTERNE ---
+timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+output_folder = os.path.join(BASE_DIR, f"EDITHOR_{timestamp}")
 os.makedirs(output_folder, exist_ok=True)
 
 # --- FONCTIONS DE TRAITEMENT PDF ---
@@ -161,10 +165,19 @@ def creer_excel_a_partir_du_modele(modele_file, output_folder, commandes):
             ws[f'G{i}'] = produit.get('PCB', "")
         wb.save(os.path.join(output_folder, f"{nom_fichier}.xlsx"))
 
-# --- BOUTON DE TRAITEMENT ---
-if uploaded_files and excel_template and output_folder:
+# --- TRAITEMENT PDF ET GÉNÉRATION EXCEL ---
+if uploaded_files:
     if st.button("🛠️ Traiter PDF(s) et générer Excel"):
         for pdf_file in uploaded_files:
             commandes = extraire_et_structurer_texte_pdf(pdf_file, ean_corrections)
             creer_excel_a_partir_du_modele(EXCEL_TEMPLATE_FILE, output_folder, commandes)
-        st.success(f"✅ Excel généré dans le dossier '{output_folder}' !")
+        st.success(f"✅ Excel généré dans le dossier temporaire '{output_folder}' !")
+
+        # --- CRÉER ZIP POUR TÉLÉCHARGEMENT ---
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED) as zf:
+            for f in os.listdir(output_folder):
+                zf.write(os.path.join(output_folder, f), f)
+        zip_buffer.seek(0)
+        zip_name = f"EDITHOR_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        st.download_button("📥 Télécharger tous les Excel", zip_buffer, file_name=zip_name)
