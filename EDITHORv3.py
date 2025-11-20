@@ -186,41 +186,36 @@ if st.button("📂 Générer Excel(s)"):
     else:
         st.warning("Veuillez sélectionner au moins un PDF.")
 
-# --- TABLEAU DES FICHIERS GENERES ---
+# --- TABLEAU DES FICHIERS GENERES ET TELECHARGEMENT ---
 if generated_files:
     st.subheader("2️⃣ Fichiers Excel générés")
-
-    # Créer fichiers en mémoire
+    
+    # Préparer fichiers en mémoire
     file_bytes_list = []
     for file_path in generated_files:
         with open(file_path, "rb") as f:
             file_bytes_list.append((os.path.basename(file_path), f.read()))
 
-    col1, col2, col3 = st.columns(3)
-
     # 1️⃣ Télécharger tout en ZIP
-    with col1:
-        zip_buffer = io.BytesIO()
-        with zipfile.ZipFile(zip_buffer, "w") as zipf:
-            for fname, fbytes in file_bytes_list:
-                zipf.writestr(fname, fbytes)
-        zip_buffer.seek(0)
-        st.download_button("⬇️ Tout télécharger (ZIP)", data=zip_buffer, file_name="EDITHOR_All.zip")
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zipf:
+        for fname, fbytes in file_bytes_list:
+            zipf.writestr(fname, fbytes)
+    zip_buffer.seek(0)
+    st.download_button("⬇️ Tout télécharger (ZIP)", data=zip_buffer, file_name="EDITHOR_All.zip", key="zip_all")
 
     # 2️⃣ Télécharger tous les Excel directement
-    with col2:
-        for fname, fbytes in file_bytes_list:
-            st.download_button(label=f"⬇️ {fname}", data=fbytes, file_name=fname, key=f"dl_{fname}")
+    for idx, (fname, fbytes) in enumerate(file_bytes_list):
+        st.download_button(f"⬇️ {fname}", data=fbytes, file_name=fname, key=f"dl_{idx}")
 
-    # 3️⃣ Tout supprimer
-    with col3:
-        if st.button("🗑️ Tout supprimer / Recommencer"):
-            for file_path in generated_files:
-                os.remove(file_path)
-            generated_files.clear()
-            st.experimental_rerun()
+    # 3️⃣ Bouton Tout supprimer
+    if st.button("🗑️ Tout supprimer / Recommencer", key="delete_all"):
+        for file_path in generated_files:
+            os.remove(file_path)
+        generated_files.clear()
+        st.experimental_rerun()
 
-    # Affichage tableau
+    # Tableau des fichiers
     df_files = pd.DataFrame({"Nom du fichier": [fname for fname, _ in file_bytes_list]})
     st.dataframe(df_files.style.set_properties(**{'background-color': '#f0f8ff', 'color': 'black'}), height=200)
 
