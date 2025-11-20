@@ -1,0 +1,15 @@
+📘 Bienvenue dans EDITHOR v3
+
+EDITHOR vous permet d'extraire les données d’un fichier PDF de commandes et de générer automatiquement des fichiers Excel préremplis.
+
+▶️ Étapes à suivre :
+
+1. Cliquez sur “Commencer” et sélectionnez un fichier PDF
+2. Les champs du modèle Excel seront automatiquement remplis
+3. Le fichier sera généré dans “Commande EXCEL EDITHOR”
+4. Vous pouvez modifier les codes EAN via “Gérer les Corrections EAN”
+
+📂 Tous les fichiers Excel seront sauvegardés dans le dossier :
+Commande EXCEL EDITHOR
+
+
